@@ -2,11 +2,12 @@ import numpy as np
 from scipy.optimize import root_scalar
 
 class DebyeModel:
-    def __init__(self, eps_infty, delta_eps, sigma_s, eps_0, tau, z=None):
+    def __init__(self, eps_infty, delta_eps, sigma_s, tau, z=None):
+        self.eps_0 = 8.854187817e-12  # vacuum permittivity [F/m]   
+
         self.eps_infty = eps_infty
         self.delta_eps = delta_eps
         self.sigma_s = sigma_s
-        self.eps_0 = eps_0
         self.tau = tau
         self.z = z
 
