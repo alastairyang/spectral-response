@@ -12,7 +12,7 @@ class PlaneWave:
         self.H = H
         self.s = s
         self.b = s + H # depth axis is [s, s+H], positively increasing
-        self.sigma = sigma  # Additional conductivity only
+        self.sigma = sigma  # DC conductivity ?
         self.model = model # frequency dependent constitutive relation for real permittivity
 
     def compute_eps(self, omega):

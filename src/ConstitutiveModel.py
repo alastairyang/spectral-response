@@ -91,7 +91,11 @@ class DebyeModel(ColeColeModel):
         Returns (eps, eps_p, eps_pp) for single or multiple relaxations.
         """
         eps = self.cole_cole(omega)
-        return eps, eps.real, -eps.imag
+        return eps
+
+    def loss_tangent(self, omega):
+        eps = self.debye(omega)
+        return -eps.imag / eps.real 
 
 class MixingModel:
 

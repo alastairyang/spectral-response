@@ -109,6 +109,36 @@ class LayeredColumn:
                 T[i, j] = 2 * np.sqrt(eps_i_val) / (np.sqrt(eps_i_val) + np.sqrt(eps_ip1_val))
         return T
 
+    def attenuation(self, omega):
+        """
+        Compute the amplitude attenuation through each layer
+        """
+        omega = np.asarray(omega, dtype=float)
+        att = np.zeros((len(self.waves), len(omega)), dtype=float)
+        for i, wave in enumerate(self.waves):
+            att[i] = np.exp(-wave.gamma(omega).real * (wave.b - wave.s))
+        return att
+
+    def attenuation_rate(self, omega):
+        """
+        Full column depth averaged attenuation rate.
+        
+        We compute the depth-averaged attenuation rate
+        via the attenuation constant
+
+        """
+        omega = np.asarray(omega, dtype=float)
+        ice_layers = self.waves[:-1]
+        att_ice = self.attenuation(omega)[:-1]
+        total_ice_thickness = sum(w.b - w.s for w in ice_layers)
+
+        amp_at_bed = np.prod(att_ice, axis=0)
+        loss_dB = -20.0 * np.log10(amp_at_bed)  # positive dB loss
+        Na = loss_dB * 1e3 / total_ice_thickness  # dB/km
+        return Na
+
+
+
     def returns(self, omega, incident_field=1.0):
         """
         Return (reflected_field, downward_transmitted_field) for each interface.
@@ -116,6 +146,13 @@ class LayeredColumn:
         Reflected fields are referenced to the top of the column.
         Transmitted fields are evaluated immediately below each interface.
         Internal multiples are not included.
+
+        Returns
+        -------
+        echoes : list of tuples
+            Each tuple contains (reflected_field, downward_transmitted_field) for an interface.
+            The reflected field is referenced to the top of the column, and the transmitted
+            field is evaluated immediately below the interface.
         """
         omega = np.asarray(omega, dtype=float)
         r = self.reflection_coefficient(omega)
@@ -150,6 +187,7 @@ class LayeredColumn:
                between the two reflecting interfaces, in shallow-to-deep order.
         shallow, deep: zero-based interface indices into returns().
         """
+        import warnings
         omega = np.asarray(omega, dtype=float)
 
         if not 0 <= shallow < deep < self.n_interface:
@@ -172,20 +210,31 @@ class LayeredColumn:
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             ratio = E_deep / E_shallow
 
-        if np.any(~np.isfinite(ratio)) or np.any(ratio == 0):
-            raise ValueError(
-                "Ratio contains zeros or nonfinite values; "
-                "check for echo nulls or numerical underflow."
+        invalid = ~np.isfinite(ratio) | (ratio == 0)
+        if np.any(invalid):
+            warnings.warn(
+                f"Ratio contains {np.sum(invalid)} zero or nonfinite values; "
+                "masking them as NaN.",
+                RuntimeWarning,
             )
+            ratio = np.where(invalid, np.nan + 1j * np.nan, ratio)
 
         # Our forward convention is exp(-i * omega * tau).
         # Remove the reference ramp before unwrapping.
         corrected = ratio * np.exp(1j * omega * tau_ref_s)
 
+        # Unwrap phase only across valid (finite) points
+        phase_corrected_rad = np.full_like(omega, np.nan, dtype=float)
+        valid = np.isfinite(corrected)
+        if np.any(valid):
+            phase_corrected_rad[valid] = np.unwrap(np.angle(corrected[valid]))
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            amplitude_db = 20.0 * np.log10(np.abs(ratio))
+
         return {
             "ratio": ratio,
-            "amplitude_db": 20.0 * np.log10(np.abs(ratio)),
-            "phase_corrected_rad": np.unwrap(np.angle(corrected)),
+            "amplitude_db": amplitude_db,
+            "phase_corrected_rad": phase_corrected_rad,
             "tau_ref_s": tau_ref_s,
         }
-
