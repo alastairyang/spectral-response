@@ -2,17 +2,18 @@ import numpy as np
 
 
 class PlaneWave:
-    def __init__(self, H, mu, sigma, model, s=0):
+    def __init__(self, H, sigma, model, s=0):
         if H < 0:
             raise ValueError("H must be nonnegative.")
+        # assuming non-magnetic
+        self.eps_0 = 8.854187817e-12 # permittivity of free space
+        self.mu = 4 * np.pi * 1e-7 # permeability of free space
 
         self.H = H
         self.s = s
         self.b = s + H # depth axis is [s, s+H], positively increasing
-        self.mu = mu
         self.sigma = sigma  # Additional conductivity only
         self.model = model # frequency dependent constitutive relation for real permittivity
-        self.eps_0 = 8.854187817e-12 # permittivity of free space
 
     def compute_eps(self, omega):
         """Effective absolute permittivity, including additional conductivity."""

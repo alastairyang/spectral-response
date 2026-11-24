@@ -1,22 +1,19 @@
 import numpy as np
 from scipy.optimize import root_scalar
 
-def thermal_omega_ref(T):
+def thermal_omega_ref(T, omega_0):
     """
     Compute the reference angular frequency based on temperature T
     We use the parameters from Table 6 of Dawson et al (2027/2028)
     particularly the numbers from Kawada 1978m T > TC1
-    """
-    """
-    Compute the reference angular frequency based on temperature T
-    We use the parameters from Table 6 of Dawson et al (2027/2028)
-    particularly the numbers from Kawada 1978m T > TC1
+
+    Eq. 58 in the same paper
     """
     Ea = 55.3e3
     tau_0 = 5.3e-16
-    omega_0 = 1 / tau_0
-    kB = 1.380649e-23  # Boltzmann constant [J/K]
-    omega_ref = omega_0 * np.exp(-Ea / (kB * T))
+    R = 8.314  # gas constant [J/(mol*K)]
+    omega_f = lambda T: omega_0 * np.exp(-Ea / (R * T))
+    omega_ref = [omega_f(omega) for omega in omega_0]
     
     return omega_ref
 
@@ -27,14 +24,14 @@ class DebyeModel:
             eps_infty, 
             delta_eps, 
             sigma_s, 
-            omega_ref = None, 
+            tau_0, # relaxation time
             T = None, 
             z=None
         ):
         self.eps_0 = 8.854187817e-12  # vacuum permittivity [F/m]   
 
         self.eps_infty = eps_infty
-        self.delta_eps = delta_eps
+        self.delta_eps = delta_eps # defined as eps_s - eps_infty
         self.sigma_s = sigma_s
 
         # T has to be a scalar
@@ -48,17 +45,13 @@ class DebyeModel:
             self.mode = len(delta_eps)
 
         if T is not None:
-            self.omega_ref = thermal_omega_ref(T)
+            omega_0 = 1 / tau_0
+            self.tau_0 = 1 / thermal_omega_ref(T, omega_0)
         else:
-            if omega_ref is None:
-                raise ValueError("omega_ref must be provided if T is not supplied")
-            self.omega_ref = omega_ref
-        self.tau = 1 / self.omega_ref
+            self.tau_0 = tau_0
 
         self.T = T
         self.z = z
-
-        self.shape_check()
 
     # def shape_check(self):
     #     """
@@ -78,11 +71,11 @@ class DebyeModel:
         Debye model for one relaxation
         """
         eps = (self.eps_infty + 
-            self.delta_eps / (1 + 1j * omega * self.tau) - 1j * self.sigma_s / (self.eps_0 * omega))
+            self.delta_eps / (1 + 1j * omega * self.tau_0) - 1j * self.sigma_s / (self.eps_0 * omega))
         eps_p  = (self.eps_infty + 
-            self.delta_eps / (1 + (omega * self.tau)**2))
-        eps_pp = (omega * self.tau * self.delta_eps / 
-            (1 + (omega * self.tau)**2) + self.sigma_s / (self.eps_0 * omega))
+            self.delta_eps / (1 + (omega * self.tau_0)**2))
+        eps_pp = (omega * self.tau_0 * self.delta_eps / 
+            (1 + (omega * self.tau_0)**2) + self.sigma_s / (self.eps_0 * omega))
         
         return eps, eps_p, eps_pp
 
@@ -98,7 +91,7 @@ class ColeColeModel:
             delta_eps, 
             sigma_s, 
             alpha, 
-            omega_ref=None, 
+            tau_0, # relaxation time 
             T=None, 
             z=None
         ):
@@ -120,17 +113,13 @@ class ColeColeModel:
             self.mode = len(delta_eps)
 
         if T is not None:
-            self.omega_ref = thermal_omega_ref(T)
+            omega_0 = 1 / tau_0
+            self.tau_0 = 1 / thermal_omega_ref(T, omega_0)
         else:
-            if omega_ref is None:
-                raise ValueError("omega_ref must be provided if T is not supplied")
-            self.omega_ref = omega_ref
-        self.tau = 1 / self.omega_ref
+            self.tau_0 = tau_0
 
         self.T = T
         self.z = z
-
-        self.shape_check()
 
     # def shape_check(self):
     #     if self.z is not None:
@@ -144,9 +133,16 @@ class ColeColeModel:
     #             raise ValueError("All input arrays must have the same shape as z")
 
     def cole_cole(self, omega):
+        """
+        Eq. 38 (Sect 5.1) in Dawson et al (2027/2028)
+        """
+        eps = 0 + 0j  # initialize complex permittivity
         for m in range(self.mode):
-            eps = (self.delta_eps[m] / (1 + (1j * omega * self.tau[m])**(1 - self.alpha[m])) 
-                   - 1j * self.sigma_s / (self.eps_0 * omega))
+            eps += (self.delta_eps[m] /
+                    (1 + (1j * omega * self.tau_0[m])**(1 - self.alpha[m])))
+
+        eps += self.eps_infty
+        eps -= 1j * self.sigma_s / (self.eps_0 * omega)
         return eps
 
 
