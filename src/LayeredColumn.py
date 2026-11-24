@@ -15,6 +15,7 @@ class LayeredColumn:
                 raise ValueError("Each item in waves must be a PlaneWave instance.")
 
         self.waves = waves
+        self.c = 299_792_458.0
         self._check_geometry_consistency()
 
         self.surface = self.waves[0].s
@@ -29,6 +30,17 @@ class LayeredColumn:
         for i in range(len(self.waves) - 1):
             if not np.allclose(self.waves[i].b, self.waves[i+1].s):
                 raise ValueError(f"Geometry inconsistency between layer {i} and layer {i+1}.")
+
+    def _shift_geometry(self):
+        """
+        shift the geometry of the individual plane wave object
+        so that their surface are all zero
+        """
+        for wave in self.waves:
+            shift = wave.s
+            wave.s -= shift
+            wave.b -= shift
+        return
     def show_geometry(self):
         """
         Display the geometry of the layered column.
@@ -97,17 +109,83 @@ class LayeredColumn:
                 T[i, j] = 2 * np.sqrt(eps_i_val) / (np.sqrt(eps_i_val) + np.sqrt(eps_ip1_val))
         return T
 
-    def returns(self, omega):
+    def returns(self, omega, incident_field=1.0):
         """
-        Compute the return power and phase for each interface
-        """
+        Return (reflected_field, downward_transmitted_field) for each interface.
 
+        Reflected fields are referenced to the top of the column.
+        Transmitted fields are evaluated immediately below each interface.
+        Internal multiples are not included.
+        """
+        omega = np.asarray(omega, dtype=float)
         r = self.reflection_coefficient(omega)
-        t = self.transmission_coefficient(omega)
+        t_down = self.transmission_coefficient(omega)
+        t_up = 1.0 - r  # Reverse electric-field transmission: 1 + r_reverse
 
-        # solve column surface return for reference
-        p_surf = self.waves[0]._surface_solve(omega)
-        self.reference_power = p_surf
+        down = np.broadcast_to(
+            np.asarray(incident_field, dtype=complex), omega.shape
+        ).copy()
+        up = np.ones_like(down)
+        echoes = []
 
-        
-        return 
+        for i, wave in enumerate(self.waves[:-1]):
+            P = np.exp(-wave.gamma(omega) * (wave.b - wave.s))
+
+            down_at_interface = down * P
+            reflected = down_at_interface * r[i] * P * up
+            transmitted = down_at_interface * t_down[i]
+            echoes.append((reflected, transmitted))
+
+            down = transmitted
+            up = t_up[i] * P * up
+
+        return echoes
+
+    def spectral_ratio(self, omega, n_ref, shallow=0, deep=1):
+        """
+        Compute the deep/shallow first-arrival spectral ratio.
+
+        omega: strictly increasing angular frequencies, in rad/s.
+        n_ref: scalar reference refractive index, or one index per layer
+               between the two reflecting interfaces, in shallow-to-deep order.
+        shallow, deep: zero-based interface indices into returns().
+        """
+        omega = np.asarray(omega, dtype=float)
+
+        if not 0 <= shallow < deep < self.n_interface:
+            raise ValueError("Require 0 <= shallow < deep < n_interface.")
+
+        # Interface i is at the bottom of waves[i]. Only the layers
+        # between the two reflecting interfaces add differential delay.
+        layers = self.waves[shallow + 1 : deep + 1]
+        thickness = np.array([wave.H for wave in layers], dtype=float)
+        n_ref = np.broadcast_to(np.asarray(n_ref, dtype=float), thickness.shape)
+        if np.any(~np.isfinite(n_ref)) or np.any(n_ref <= 0):
+            raise ValueError("Reference indices must be finite and positive.")
+
+        tau_ref_s = 2.0 * np.dot(thickness, n_ref) / self.c
+
+        echoes = self.returns(omega)
+        E_shallow = echoes[shallow][0]
+        E_deep = echoes[deep][0]
+
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            ratio = E_deep / E_shallow
+
+        if np.any(~np.isfinite(ratio)) or np.any(ratio == 0):
+            raise ValueError(
+                "Ratio contains zeros or nonfinite values; "
+                "check for echo nulls or numerical underflow."
+            )
+
+        # Our forward convention is exp(-i * omega * tau).
+        # Remove the reference ramp before unwrapping.
+        corrected = ratio * np.exp(1j * omega * tau_ref_s)
+
+        return {
+            "ratio": ratio,
+            "amplitude_db": 20.0 * np.log10(np.abs(ratio)),
+            "phase_corrected_rad": np.unwrap(np.angle(corrected)),
+            "tau_ref_s": tau_ref_s,
+        }
+
