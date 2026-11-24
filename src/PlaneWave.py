@@ -52,23 +52,34 @@ class PlaneWave:
     def solution(self, omega, z):
         gamma = self.gamma(omega)
         return np.exp(-gamma * z)
-    def bed_amplitude(self, omega):
+    def base_amplitude(self, omega):
         """
-        Bed return in decibels relative to the surface return.
+        Base return in decibels relative to the surface return.
         """
         return self.decibel(
-            np.abs(self._bed_solve(omega)), 
+            np.abs(self._base_solve(omega)), 
             np.abs(self._surface_solve(omega))
         )
 
-    def bed_phase(self, omega):
-        """
-        Bed return phase in radians relative to the surface return.
-        """
-        return np.angle(self._bed_solve(omega) / self._surface_solve(omega))
+    # def base_phase(self, omega):
+    #     """
+    #     Base return phase in radians relative to the surface return.
+    #     """
+    #     return np.angle(self._base_solve(omega) / self._surface_solve(omega))
 
-    def _bed_solve(self, omega):
-        return self.solution(omega, self.b)
+    def base_phase(self, omega):
+        """
+        Directly computing unwrapped phase in radians relative to the surface return.
+        account for two way travel
+        """
+        return -self.gamma(omega).imag * 2 * (self.b - self.s)
+
+    def _base_solve(self, omega):
+        """
+        Solve the wave at the base of the layer.
+        Account for two way travel
+        """
+        return self.solution(omega, 2 * self.b)
 
     def _surface_solve(self, omega):
         return self.solution(omega, self.s)

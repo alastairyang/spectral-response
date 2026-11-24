@@ -16,6 +16,10 @@ class LayeredColumn:
 
         self.waves = waves
         self._check_geometry_consistency()
+
+        self.surface = self.waves[0].s
+        self.base = self.waves[-1].b
+        print(f"Surface: {self.surface}, Base: {self.base} m below surface")
         self.n_interface = len(self.waves) - 1
 
     def _check_geometry_consistency(self):
@@ -58,7 +62,8 @@ class LayeredColumn:
             # plt.text(0, mid, f"Layer {self.waves.index(wave)+1}", va='center', ha='left', fontsize=8)
         # add one legend showing the color for frequencies
         for j, w in enumerate(omega):
-            plt.plot([], [], color=freq_colors[j], label=f"{w/1e6:.1f} MHz")
+            f = w / (2 * np.pi)
+            plt.plot([], [], color=freq_colors[j], label=f"{f/1e6:.1f} MHz")
         plt.gca().invert_yaxis()  # invert y-axis to have depth increasing downwards
         plt.xlabel("Relative Permittivity")
         plt.ylabel("Depth")
@@ -92,4 +97,17 @@ class LayeredColumn:
                 T[i, j] = 2 * np.sqrt(eps_i_val) / (np.sqrt(eps_i_val) + np.sqrt(eps_ip1_val))
         return T
 
-    
+    def returns(self, omega):
+        """
+        Compute the return power and phase for each interface
+        """
+
+        r = self.reflection_coefficient(omega)
+        t = self.transmission_coefficient(omega)
+
+        # solve column surface return for reference
+        p_surf = self.waves[0]._surface_solve(omega)
+        self.reference_power = p_surf
+
+        
+        return 
