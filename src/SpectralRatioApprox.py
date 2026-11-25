@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 class SpectralRatioApprox:
     """
@@ -68,4 +69,33 @@ class SpectralRatioApprox:
         """
         if ratio.shape != self.omega.shape:
             raise ValueError("Shape of ratio does not match shape of omega.")
-        
+
+
+class SpectralRatioDiagnostic:
+    """
+    Class for quantifying the bias and identifiability of of 
+    spectral ratio method.
+    """
+    def __init__(self, omega, model):
+        self.model = model # constitutive model (e.g. Debye)
+
+        self.eps_infty = self.model.eps_infty
+        self.sigma_s   = self.model.sigma_s
+        self.eps_0     = self.model.eps_0
+        self.c         = 3e8 
+
+        self.omega = np.asarray(omega, dtype=float)
+        self.torch_omega = torch.tensor(self.omega, dtype=torch.float64)
+        self.freq  = self.omega / (2 * np.pi)
+
+    def alpha_bias(self):
+        """
+        Compute the bias in estimating alpha (attenuation factor)
+        using spectral ratio method
+        """
+        depspp_dw = self.model.grad_imag(self.omega)
+
+        prefactor = 1 / (2 * self.c * self.eps_0 * np.sqrt(self.eps_infty))
+        return prefactor * (self.omega**2 * depspp_dw * self.eps_0 - self.sigma_s)
+
+

@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import root_scalar
+import torch
 
 def thermal_omega_ref(T, tau_0):
     if not np.isscalar(T):
@@ -42,10 +43,15 @@ class ColeColeModel:
         self.T = T
         self.z = z
 
-    def cole_cole(self, omega):
+    def cole_cole(self, omega, T=None):
         """
         Eq. 38 (Sect 5.1) in Dawson et al (2027/2028)
+
         """
+        if T is not None:
+            tau_0 = 5.3e-16
+            self.tau_0 = thermal_omega_ref(T, tau_0) * np.ones(self.mode)
+
         eps = 0 + 0j
         for m in range(self.mode):
             eps += (self.delta_eps[m] /
@@ -54,6 +60,22 @@ class ColeColeModel:
         eps += self.eps_infty
         eps -= 1j * self.sigma_s / (self.eps_0 * omega)
         return eps
+
+    def grad_imag(self, omega):
+        """
+        Gradient of the imaginary part wrt angular frequency.
+        Uses PyTorch autograd (note: in this class eps = eps' - j*eps'',
+        so eps.imag is negative).
+        """
+        is_scalar = np.isscalar(omega)
+        omega_t = torch.as_tensor(omega, dtype=torch.float64).clone().detach().requires_grad_(True)
+
+        eps = self.cole_cole(omega_t)
+        (-eps.imag).sum().backward()
+
+        grad = omega_t.grad.detach().numpy()
+        return grad.item() if is_scalar else grad
+
 
     def loss_tangent(self, omega):
         eps = self.cole_cole(omega)
