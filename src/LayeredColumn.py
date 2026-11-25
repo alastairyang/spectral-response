@@ -128,7 +128,7 @@ class LayeredColumn:
 
         """
         omega = np.asarray(omega, dtype=float)
-        ice_layers = self.waves[:-1]
+        ice_layers = self.waves[1:-1]
         att_ice = self.attenuation(omega)[:-1]
         total_ice_thickness = sum(w.b - w.s for w in ice_layers)
 

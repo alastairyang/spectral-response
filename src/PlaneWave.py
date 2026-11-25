@@ -22,7 +22,7 @@ class PlaneWave:
             raise ValueError("omega must be finite and strictly positive.")
 
         eps_r = np.asarray(self.model(omega), dtype=complex)
-        return self.eps_0 * eps_r - 1j * self.sigma / omega
+        return self.eps_0 * eps_r # - 1j * self.sigma / omega
 
     def gamma(self, omega):
         omega = np.asarray(omega, dtype=float)

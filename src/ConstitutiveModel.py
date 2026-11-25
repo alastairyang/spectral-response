@@ -51,6 +51,7 @@ class ColeColeModel:
         if T is not None:
             tau_0 = 5.3e-16
             self.tau_0 = thermal_omega_ref(T, tau_0) * np.ones(self.mode)
+            self.T = T
 
         eps = 0 + 0j
         for m in range(self.mode):
